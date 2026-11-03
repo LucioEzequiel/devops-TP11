@@ -1,0 +1,41 @@
+name: TP11 - Plan en Pull Request
+
+on:
+  pull_request:
+    branches: [develop]
+    paths:
+      - "**.tf"
+      - "envs/**"
+      - ".github/workflows/tp11-plan.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tp11-plan-${{ github.head_ref }}
+  cancel-in-progress: true
+
+jobs:
+  plan-dev:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 15
+    env:
+      TF_IN_AUTOMATION: "1"
+      TF_INPUT: "0"
+      TF_STATE_DIR: /var/lib/tf-state/devops-tp11
+      TF_VAR_postgres_password: ${{ secrets.POSTGRES_PASSWORD_DEV }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verificar formato
+        run: terraform fmt -check -recursive
+
+      - name: Init (state fuera del repo)
+        run: terraform init -input=false -backend-config="path=${TF_STATE_DIR}/dev.tfstate"
+
+      - name: Validate
+        run: terraform validate
+
+      - name: Plan dev
+        run: terraform plan -input=false -no-color -lock-timeout=60s -var-file=envs/dev/terraform.tfvars

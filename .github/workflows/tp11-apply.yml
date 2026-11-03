@@ -1,0 +1,47 @@
+name: TP11 - Apply a prod
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "**.tf"
+      - "envs/**"
+      - ".github/workflows/tp11-apply.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tp11-apply-prod
+  cancel-in-progress: false
+
+jobs:
+  apply-prod:
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 20
+    env:
+      TF_IN_AUTOMATION: "1"
+      TF_INPUT: "0"
+      TF_STATE_DIR: /var/lib/tf-state/devops-tp11
+      TF_VAR_postgres_password: ${{ secrets.POSTGRES_PASSWORD_PROD }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Init (state de prod fuera del repo)
+        run: terraform init -input=false -backend-config="path=${TF_STATE_DIR}/prod.tfstate"
+
+      - name: Validate
+        run: terraform validate
+
+      - name: Plan prod (guardado)
+        run: terraform plan -input=false -no-color -lock-timeout=120s -var-file=envs/prod/terraform.tfvars -out=tfplan
+
+      - name: Apply prod
+        run: terraform apply -input=false -lock-timeout=120s tfplan
+
+      - name: Verificar frontend prod
+        run: |
+          sleep 60
+          code=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8091)
+          echo "HTTP $code"
+          test "$code" = "200"
